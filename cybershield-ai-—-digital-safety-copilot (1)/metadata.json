@@ -1,0 +1,6 @@
+{
+  "name": "CyberShield AI — Digital Safety Copilot",
+  "description": "AI-powered digital safety and cybersecurity copilot that detects phishing, scams, malicious URLs, and social engineering attacks with explainable risk analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

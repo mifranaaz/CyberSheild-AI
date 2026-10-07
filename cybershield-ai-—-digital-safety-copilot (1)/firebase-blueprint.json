@@ -1,0 +1,186 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public user profile metadata stored for authenticated users.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the user",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "securityScore": {
+          "type": "number",
+          "description": "User's calculated security awareness score (0-100)"
+        },
+        "scansCount": {
+          "type": "number",
+          "description": "Total number of threat scans performed by the user"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of profile creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last profile update"
+        }
+      },
+      "required": ["uid", "displayName", "securityScore", "scansCount", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII storage for the user's email address.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of record creation"
+        }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "ScanRecord": {
+      "title": "ScanRecord",
+      "description": "Threat scan result associated with an authenticated user account.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the user who owns this scan record",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "inputType": {
+          "type": "string",
+          "description": "Type of input scanned",
+          "enum": ["screenshot", "message", "email", "url", "phone_upi", "qr"],
+          "minLength": 2,
+          "maxLength": 20
+        },
+        "inputPreview": {
+          "type": "string",
+          "description": "Short truncated preview of the scanned input",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "riskScore": {
+          "type": "number",
+          "description": "Calculated 0-100 threat risk score"
+        },
+        "classification": {
+          "type": "string",
+          "description": "Risk classification tier",
+          "enum": ["SAFE", "SUSPICIOUS", "HIGH RISK", "DANGEROUS"],
+          "minLength": 4,
+          "maxLength": 20
+        },
+        "threatCategory": {
+          "type": "string",
+          "description": "Identified threat category",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "domain": {
+          "type": "string",
+          "description": "Extracted or analyzed domain, phone, or UPI ID",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "summaryExplanation": {
+          "type": "string",
+          "description": "Human-readable explanation of the scan result",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "languageRisk": {
+          "type": "number",
+          "description": "Language risk subscore (0-100)"
+        },
+        "urlRisk": {
+          "type": "number",
+          "description": "URL risk subscore (0-100)"
+        },
+        "impersonationRisk": {
+          "type": "number",
+          "description": "Impersonation risk subscore (0-100)"
+        },
+        "threatIntelRisk": {
+          "type": "number",
+          "description": "Threat intelligence risk subscore (0-100)"
+        },
+        "behavioralRisk": {
+          "type": "number",
+          "description": "Behavioral risk subscore (0-100)"
+        },
+        "recommendedActions": {
+          "type": "array",
+          "description": "Bounded list of recommended actions (max 8)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the scan was saved"
+        }
+      },
+      "required": [
+        "userId",
+        "inputType",
+        "inputPreview",
+        "riskScore",
+        "classification",
+        "threatCategory",
+        "domain",
+        "summaryExplanation",
+        "languageRisk",
+        "urlRisk",
+        "impersonationRisk",
+        "threatIntelRisk",
+        "behavioralRisk",
+        "recommendedActions",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores user profile metadata without PII."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Stores isolated PII (email) accessible only to the owner."
+    },
+    "/scans/{scanId}": {
+      "schema": { "$ref": "#/entities/ScanRecord" },
+      "description": "Stores threat scan history associated with a specific user UID."
+    }
+  }
+}

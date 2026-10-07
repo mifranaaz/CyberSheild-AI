@@ -1,0 +1,172 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1 & Phase 4.1: Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Pillar 2: Validation Blueprints (Anti-Update-Gap)
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'securityScore', 'scansCount', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'securityScore', 'scansCount', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == request.auth.uid
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.securityScore is number && data.securityScore >= 0 && data.securityScore <= 100
+        && data.scansCount is number && data.scansCount >= 0 && data.scansCount <= 100000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'createdAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == request.auth.uid
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.createdAt is timestamp;
+    }
+
+    function isValidScanRecord(data) {
+      return data.keys().hasAll([
+          'userId',
+          'inputType',
+          'inputPreview',
+          'riskScore',
+          'classification',
+          'threatCategory',
+          'domain',
+          'summaryExplanation',
+          'languageRisk',
+          'urlRisk',
+          'impersonationRisk',
+          'threatIntelRisk',
+          'behavioralRisk',
+          'recommendedActions',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'userId',
+          'inputType',
+          'inputPreview',
+          'riskScore',
+          'classification',
+          'threatCategory',
+          'domain',
+          'summaryExplanation',
+          'languageRisk',
+          'urlRisk',
+          'impersonationRisk',
+          'threatIntelRisk',
+          'behavioralRisk',
+          'recommendedActions',
+          'createdAt'
+        ])
+        && data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 && data.userId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.userId == request.auth.uid
+        && data.inputType is string && data.inputType.size() >= 2 && data.inputType.size() <= 20
+        && (data.inputType == 'screenshot' || data.inputType == 'message' || data.inputType == 'email' || data.inputType == 'url' || data.inputType == 'phone_upi' || data.inputType == 'qr')
+        && data.inputPreview is string && data.inputPreview.size() >= 1 && data.inputPreview.size() <= 500
+        && data.riskScore is number && data.riskScore >= 0 && data.riskScore <= 100
+        && data.classification is string && data.classification.size() >= 4 && data.classification.size() <= 20
+        && (data.classification == 'SAFE' || data.classification == 'SUSPICIOUS' || data.classification == 'HIGH RISK' || data.classification == 'DANGEROUS')
+        && data.threatCategory is string && data.threatCategory.size() >= 1 && data.threatCategory.size() <= 160
+        && data.domain is string && data.domain.size() >= 1 && data.domain.size() <= 255
+        && data.summaryExplanation is string && data.summaryExplanation.size() >= 1 && data.summaryExplanation.size() <= 2000
+        && data.languageRisk is number && data.languageRisk >= 0 && data.languageRisk <= 100
+        && data.urlRisk is number && data.urlRisk >= 0 && data.urlRisk <= 100
+        && data.impersonationRisk is number && data.impersonationRisk >= 0 && data.impersonationRisk <= 100
+        && data.threatIntelRisk is number && data.threatIntelRisk >= 0 && data.threatIntelRisk <= 100
+        && data.behavioralRisk is number && data.behavioralRisk >= 0 && data.behavioralRisk <= 100
+        && data.recommendedActions is list && data.recommendedActions.size() >= 1 && data.recommendedActions.size() <= 8
+        && data.recommendedActions[0] is string && data.recommendedActions[0].size() <= 500
+        && data.createdAt is timestamp;
+    }
+
+    // Collection 1: /users/{userId}
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'securityScore', 'scansCount', 'updatedAt']);
+
+      allow delete: if false;
+
+      // Subcollection: /users/{userId}/private/{docId} (PII Split Isolation + Master Gate)
+      match /private/{docId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(docId)
+          && exists(/databases/$(database)/documents/users/$(userId));
+
+        allow list: if false;
+
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(docId)
+          && docId == 'info'
+          && isValidUserPrivateInfo(incoming())
+          && incoming().createdAt == request.time
+          && existsAfter(/databases/$(database)/documents/users/$(userId));
+
+        allow update, delete: if false;
+      }
+    }
+
+    // Collection 2: /scans/{scanId}
+    match /scans/{scanId} {
+      allow get: if isSignedIn()
+        && isValidId(scanId)
+        && existing().userId == request.auth.uid;
+
+      allow list: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(scanId)
+        && isValidScanRecord(incoming())
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+
+      allow update: if false;
+
+      allow delete: if isSignedIn()
+        && isValidId(scanId)
+        && existing().userId == request.auth.uid;
+    }
+  }
+}
